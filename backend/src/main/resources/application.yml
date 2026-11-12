@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: polyglotmesh
+
+polyglotmesh:
+  # Runs a tiny Python + JS smoke test on startup (Week 1 goal)
+  hello: true

@@ -1,0 +1,19 @@
+# Java / Maven
+target/
+*.class
+*.log
+*.jar
+
+# Local database files
+backend/data/
+
+# Node
+node_modules/
+dist/
+
+# Secrets and IDE
+.env
+.idea/
+.vscode/
+*.iml
+.DS_Store
