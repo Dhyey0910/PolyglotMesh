@@ -3,6 +3,7 @@ package com.polyglotmesh.service;
 import com.polyglotmesh.model.ExecutionRequest;
 import com.polyglotmesh.model.ExecutionResult;
 import com.polyglotmesh.model.ExecutionStatus;
+import com.polyglotmesh.sandbox.SandboxContextFactory;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import org.graalvm.polyglot.Context;
@@ -13,18 +14,19 @@ import org.springframework.stereotype.Service;
 @Service
 public class PolyglotExecutionService {
 
+    private final SandboxContextFactory contextFactory;
+
+    public PolyglotExecutionService(SandboxContextFactory contextFactory) {
+        this.contextFactory = contextFactory;
+    }
+
     public ExecutionResult execute(ExecutionRequest request) {
         long start = System.nanoTime();
         String lang = request.language().id();
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
 
-        try (Context ctx = Context.newBuilder(lang)
-                .out(out)
-                .err(err)
-                .option("engine.WarnInterpreterOnly", "false")
-                .build()) {
-
+        try (Context ctx = contextFactory.create(request.language(), out, err)) {
             ctx.eval(lang, request.code());
             return ExecutionResult.success(request.language(), text(out), millisSince(start));
 

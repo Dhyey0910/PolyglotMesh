@@ -8,3 +8,8 @@ spring:
 polyglotmesh:
   # Runs a tiny Python + JS smoke test on startup (Week 1 goal)
   hello: true
+
+sandbox:
+  timeout-ms: 3000
+  statement-limit: 5000000
+  max-output-chars: 10000
