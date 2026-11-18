@@ -6,13 +6,14 @@ import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.EnvironmentAccess;
 import org.graalvm.polyglot.HostAccess;
 import org.graalvm.polyglot.PolyglotAccess;
+import org.graalvm.polyglot.ResourceLimits;
 import org.graalvm.polyglot.io.IOAccess;
 import org.springframework.stereotype.Component;
 
 /**
  * Builds locked-down GraalVM contexts. Guest code gets no file system, no
  * network, no threads, no processes, no environment variables and no access
- * to arbitrary Java classes.
+ * to arbitrary Java classes. A statement limit caps CPU work per run.
  */
 @Component
 public class SandboxContextFactory {
@@ -24,11 +25,17 @@ public class SandboxContextFactory {
             .allowArrayAccess(true)
             .build();
 
-    public Context create(Language language, OutputStream out, OutputStream err) {
-        return baseBuilder(language, out, err).build();
+    private final SandboxProperties properties;
+
+    public SandboxContextFactory(SandboxProperties properties) {
+        this.properties = properties;
     }
 
-    protected Context.Builder baseBuilder(Language language, OutputStream out, OutputStream err) {
+    public Context create(Language language, OutputStream out, OutputStream err) {
+        ResourceLimits limits = ResourceLimits.newBuilder()
+                .statementLimit(properties.statementLimit(), null)
+                .build();
+
         return Context.newBuilder(language.id())
                 .allowHostAccess(HOST_ACCESS)
                 .allowHostClassLookup(className -> false)
@@ -38,8 +45,10 @@ public class SandboxContextFactory {
                 .allowCreateProcess(false)
                 .allowEnvironmentAccess(EnvironmentAccess.NONE)
                 .allowPolyglotAccess(PolyglotAccess.NONE)
+                .resourceLimits(limits)
                 .out(out)
                 .err(err)
-                .option("engine.WarnInterpreterOnly", "false");
+                .option("engine.WarnInterpreterOnly", "false")
+                .build();
     }
 }

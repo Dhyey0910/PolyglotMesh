@@ -3,9 +3,10 @@ package com.polyglotmesh.service;
 import com.polyglotmesh.model.ExecutionRequest;
 import com.polyglotmesh.model.ExecutionResult;
 import com.polyglotmesh.model.ExecutionStatus;
+import com.polyglotmesh.sandbox.BoundedOutputStream;
 import com.polyglotmesh.sandbox.SandboxContextFactory;
-import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
+import com.polyglotmesh.sandbox.SandboxProperties;
+import com.polyglotmesh.sandbox.Watchdog;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.PolyglotException;
 import org.springframework.stereotype.Service;
@@ -15,29 +16,48 @@ import org.springframework.stereotype.Service;
 public class PolyglotExecutionService {
 
     private final SandboxContextFactory contextFactory;
+    private final SandboxProperties properties;
+    private final Watchdog watchdog;
 
-    public PolyglotExecutionService(SandboxContextFactory contextFactory) {
+    public PolyglotExecutionService(SandboxContextFactory contextFactory,
+                                    SandboxProperties properties,
+                                    Watchdog watchdog) {
         this.contextFactory = contextFactory;
+        this.properties = properties;
+        this.watchdog = watchdog;
     }
 
     public ExecutionResult execute(ExecutionRequest request) {
         long start = System.nanoTime();
         String lang = request.language().id();
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        BoundedOutputStream out = new BoundedOutputStream(properties.maxOutputChars());
+        BoundedOutputStream err = new BoundedOutputStream(properties.maxOutputChars());
 
-        try (Context ctx = contextFactory.create(request.language(), out, err)) {
+        Context ctx = contextFactory.create(request.language(), out, err);
+        Watchdog.Guard guard = watchdog.arm(ctx);
+
+        try (ctx) {
             ctx.eval(lang, request.code());
-            return ExecutionResult.success(request.language(), text(out), millisSince(start));
+            return ExecutionResult.success(request.language(), out.text(), millisSince(start));
 
         } catch (PolyglotException e) {
-            return ExecutionResult.failure(ExecutionStatus.ERROR, request.language(),
-                    text(out), e.getMessage(), "", millisSince(start));
+            ExecutionStatus status = classify(e);
+            return ExecutionResult.failure(status, request.language(),
+                    out.text(), e.getMessage(), "", millisSince(start));
+
+        } finally {
+            guard.disarm();
         }
     }
 
-    private static String text(ByteArrayOutputStream stream) {
-        return stream.toString(StandardCharsets.UTF_8);
+    private static ExecutionStatus classify(PolyglotException e) {
+        if (e.isCancelled()) {
+            return ExecutionStatus.TIMEOUT;
+        }
+        if (e.isResourceExhausted()) {
+            return ExecutionStatus.LIMIT_EXCEEDED;
+        }
+        return ExecutionStatus.ERROR;
     }
 
     private static long millisSince(long startNanos) {
