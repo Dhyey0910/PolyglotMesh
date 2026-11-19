@@ -2,7 +2,6 @@ package com.polyglotmesh.service;
 
 import com.polyglotmesh.model.ExecutionRequest;
 import com.polyglotmesh.model.ExecutionResult;
-import com.polyglotmesh.model.ExecutionStatus;
 import com.polyglotmesh.sandbox.BoundedOutputStream;
 import com.polyglotmesh.sandbox.SandboxContextFactory;
 import com.polyglotmesh.sandbox.SandboxProperties;
@@ -18,13 +17,16 @@ public class PolyglotExecutionService {
     private final SandboxContextFactory contextFactory;
     private final SandboxProperties properties;
     private final Watchdog watchdog;
+    private final ExecutionErrorMapper errorMapper;
 
     public PolyglotExecutionService(SandboxContextFactory contextFactory,
                                     SandboxProperties properties,
-                                    Watchdog watchdog) {
+                                    Watchdog watchdog,
+                                    ExecutionErrorMapper errorMapper) {
         this.contextFactory = contextFactory;
         this.properties = properties;
         this.watchdog = watchdog;
+        this.errorMapper = errorMapper;
     }
 
     public ExecutionResult execute(ExecutionRequest request) {
@@ -41,23 +43,11 @@ public class PolyglotExecutionService {
             return ExecutionResult.success(request.language(), out.text(), millisSince(start));
 
         } catch (PolyglotException e) {
-            ExecutionStatus status = classify(e);
-            return ExecutionResult.failure(status, request.language(),
-                    out.text(), e.getMessage(), "", millisSince(start));
+            return errorMapper.map(request.language(), e, out.text(), millisSince(start));
 
         } finally {
             guard.disarm();
         }
-    }
-
-    private static ExecutionStatus classify(PolyglotException e) {
-        if (e.isCancelled()) {
-            return ExecutionStatus.TIMEOUT;
-        }
-        if (e.isResourceExhausted()) {
-            return ExecutionStatus.LIMIT_EXCEEDED;
-        }
-        return ExecutionStatus.ERROR;
     }
 
     private static long millisSince(long startNanos) {
